@@ -29,4 +29,4 @@ using Customer Lifetime Value analysis.
 - Monthly charges
 - Tenure in months
 
-## MSc Dissertation — University of Huddersfield, 2023
+
