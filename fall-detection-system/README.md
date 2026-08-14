@@ -20,4 +20,4 @@ in elderly care settings.
 3. Model evaluation and optimisation
 4. Real-world deployment design for elderly care
 
-## University of Huddersfield, 2023
+
