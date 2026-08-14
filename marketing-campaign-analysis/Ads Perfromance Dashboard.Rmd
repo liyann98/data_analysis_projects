@@ -1,0 +1,268 @@
+---
+title: "Ads Performance Dashboard"
+author: "Liyan"
+date: "2026-02-17"
+output: html_document
+runtime: shiny
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plotly)
+library(lubridate)
+
+
+df <- read.csv("Cleanedcal_ads_df.csv")
+
+df$Ad_Date <- as.character(df$Ad_Date)
+
+df$Ad_Date <- case_when(
+  nchar(df$Ad_Date) == 8 & substr(df$Ad_Date,1,4) == "2024" ~ 
+    ymd(df$Ad_Date),
+  TRUE ~ 
+    dmy(df$Ad_Date)
+)
+
+```
+
+
+
+```{r roas_plot, echo=FALSE}
+
+output$roas_plot <- renderPlotly({ 
+  
+  req(input$Keyword, input$metric)
+  
+  
+   summary_data <- df %>%
+    filter(Keyword == input$Keyword) %>%
+    group_by(Ad_ID) %>%
+    summarise(
+      total_sales = sum(Sale_Amount, na.rm = TRUE),
+      metric_value = mean(.data[[input$metric]], na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(total_sales)) %>%
+    slice_head(n = 10) 
+  
+  p <- ggplot(summary_data,
+         aes(x = reorder(Ad_ID,metric_value), y = metric_value)) +
+    geom_col(fill = "navy") + 
+    theme_minimal() + 
+    labs(title = paste(input$metric, "Top 10 Ads by Sales(",input$metric,")"),
+         x = "Ad ID", y = input$metric)
+  
+  ggplotly(p)
+  })  
+```
+
+```{r spendscatter, echo=FALSE}
+
+output$spend_vs_sales <- renderPlotly({
+
+  summary_data <- df %>%
+    group_by(Keyword) %>%
+    summarise(
+      total_spend = sum(Cost, na.rm = TRUE),
+      total_sales = sum(Sale_Amount, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  k <- ggplot(summary_data,
+              aes(x = total_spend,
+                  y = total_sales,
+                  text = Keyword)) +
+    geom_point(size = 3, color = "blue") +
+    geom_smooth(method = "lm", se = FALSE) +
+    theme_minimal() +
+    labs(title = "Spend vs Sales by Keyword",
+         x = "Total Spend",
+         y = "Total Sales")
+
+  ggplotly(k, tooltip = "text")
+})
+```
+
+```{r roas_static, echo = FALSE}
+
+
+output$roas_static <- renderPlotly({
+
+  summary_data <- df %>%
+    group_by(Keyword) %>%
+    summarise(avg_roas = mean(ROAS, na.rm = TRUE),
+              .groups = "drop") %>%
+    arrange(desc(avg_roas))
+
+ q <- ggplot(summary_data,
+         aes(x = reorder(Keyword, avg_roas),
+             y = avg_roas)) +
+    geom_col(fill = "darkgreen") +
+    coord_flip() +
+    theme_minimal() +
+    labs(title = "Average ROAS by Keyword",
+         x = "Keyword",
+         y = "Average ROAS")
+ 
+ ggplotly(q)
+})
+
+```
+
+
+```{r growthtrend, echo = FALSE}
+
+
+output$growth_kpi <- renderUI({
+  
+  summary_data <- df %>%
+    mutate(Month = format(Ad_Date, "%Y-%m")) %>%
+    group_by(Month) %>%
+    summarise(total_sales = sum(Sale_Amount, na.rm = TRUE),
+              .groups = "drop") %>%
+    arrange(Month)
+  
+  if (nrow(summary_data) < 2) {
+    return(HTML("<h3>Not enough data for growth</h3>"))
+  }
+  
+  growth_pct <- (tail(summary_data$total_sales, 1) /
+                 head(tail(summary_data$total_sales, 2), 1) - 1) * 100
+  
+  color <- ifelse(growth_pct >= 0, "green", "red")
+  arrow <- ifelse(growth_pct >= 0, "▲", "▼")
+  
+  HTML(paste0(
+    "<div style='text-align:center;'>",
+    "<h1 style='color:", color, ";'>",
+    arrow, " ", round(growth_pct, 2), "%</h1>",
+    "<p>Month-over-Month Growth</p>",
+    "</div>"
+  ))
+})
+
+
+```
+
+```{r roasbox, echo = FALSE}
+
+
+output$roas_box <- renderPlotly({
+  
+  b <- ggplot(df,
+              aes(x = Keyword,
+                  y = ROAS)) +
+    geom_boxplot(fill = "orange") +
+    theme_minimal() +
+    labs(title = "ROAS Distribution by Keyword",
+         x = "Keyword",
+         y = "ROAS")
+  
+  ggplotly(b)
+})
+```
+
+```{r KPI_box, echo = FALSE}
+
+output$kpi_boxes <- renderUI({
+
+  total_spend <- sum(df$Cost, na.rm = TRUE)
+  total_sales <- sum(df$Sale_Amount, na.rm = TRUE)
+  avg_roas <- mean(df$ROAS, na.rm = TRUE)
+
+  HTML(paste0(
+    "<div style='display:flex; justify-content:space-around;'>",
+    "<div><h3>Total Cost</h3><h2>", scales::comma(round(total_spend,0)), "</h2></div>",
+    "<div><h3>Total Sales</h3><h2>", scales::comma(round(total_sales,0)), "</h2></div>",
+    "<div><h3>Avg ROAS</h3><h2>", round(avg_roas,2), "</h2></div>",
+    "</div>"
+  ))
+})
+```
+
+
+```{r layout, echo=FALSE}
+
+br()
+
+h2("Overall KPI's")
+# --- KPI Row ---
+fluidRow(
+  column(12,
+         uiOutput("kpi_boxes")
+  )
+)
+
+br()
+
+# --- Growth KPI ---
+h2("Month-over-Month Growth")
+
+
+fluidRow(
+  column(12,
+         uiOutput("growth_kpi")
+  )
+)
+
+br()
+
+# --- Performance Overview ---
+h2("Performance Overview")
+
+
+fluidRow(
+  column(6,
+         plotlyOutput("roas_static")
+  ),
+  column(6,
+         plotlyOutput("spend_vs_sales")
+  )
+)
+
+br()
+
+# --- Ad Level Deep Dive ---
+h2("Ad-Level Deep Dive")
+
+
+fluidRow(
+  column(12,
+         
+         inputPanel( 
+  selectInput("Keyword",
+              "Choose Keyword:",
+              choices = unique(df$Keyword)),
+
+  selectInput("metric",
+              "Choose Metric:",
+              choices = c("ROAS","CTR","Conversion.Rate"))
+)))
+
+br()
+
+fluidRow(
+  column(12,
+
+         plotlyOutput("roas_plot")
+  )
+)
+
+br()
+
+
+# --- Distribution Analysis ---
+
+h2("ROAS Distribution Analysis")
+
+fluidRow(
+  column(12,
+         plotlyOutput("roas_box")
+  )
+)
+
+```
