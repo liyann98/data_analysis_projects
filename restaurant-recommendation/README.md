@@ -20,4 +20,4 @@ and personalise restaurant recommendations.
 - K-Means Clustering
 - Matplotlib, Seaborn
 
-## University of Huddersfield, 2023
+
